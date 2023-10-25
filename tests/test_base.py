@@ -1,4 +1,5 @@
-from easybullet.base import *
+import sys; sys.path.append('../')
+from ..core.base import *
 import time
 
 def test_bullet():

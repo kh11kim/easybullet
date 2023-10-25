@@ -1,4 +1,5 @@
-from easybullet.pose import *
+import sys; sys.path.append('../')
+from ..core.pose import *
 
 def test_SO3_generation():
     assert isinstance(SO3([1,0,0,0]), SO3)

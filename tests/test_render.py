@@ -1,5 +1,6 @@
-from easybullet.base import *
-from easybullet.render import *
+import sys; sys.path.append('../')
+from ..core.base import *
+from ..core.render import *
 import time
 
 def test_render():
