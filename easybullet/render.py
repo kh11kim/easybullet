@@ -1,0 +1,79 @@
+
+import numpy as np
+import pybullet as p
+from dataclasses import dataclass
+from easybullet.base import *
+from easybullet.pose import SE3, SO3
+
+@dataclass
+class CameraIntrinsic:
+    width: float
+    height: float
+    fx: float
+    fy: float
+    cx: float
+    cy: float
+    near: float
+    far: float
+
+    def get_projection_matrix(self):
+        fx, fy = self.fx, self.fy
+        cx, cy = self.cx, self.cy
+        return np.array([
+            [fx, 0, cx],
+            [0, fy, cy],
+            [0, 0, 1]])
+    
+    def get_projection_matrix_opengl(self):
+        w, h = self.width, self.height
+        fx, fy = self.fx, self.fy
+        cx, cy = self.cx, self.cy
+        near, far = self.near, self.far
+        
+        x_scale = 2 / w * fx
+        y_scale = 2 / h * fy
+        x_shift = 1 - 2 * cx / w
+        y_shift = (2 * cy - h) / h
+        return np.array([
+            [x_scale, 0, x_shift, 0],
+            [0, y_scale, y_shift, 0],
+            [0, 0, (near+far)/(near-far), 2*near*far/(near-far)],
+            [0, 0, -1, 0]
+        ]).flatten(order="F")
+
+
+class Camera:
+    def __init__(self, world:BulletWorld, intrinsic:CameraIntrinsic):
+        self.world = world
+        self.intrinsic = intrinsic
+    
+    @classmethod
+    def get_look_at_pose(cls, eye_pos:ArrayLike, target_pos=np.zeros(3), up_vector=np.array([0.,0,1])):
+        f = np.asarray(target_pos) - np.asarray(eye_pos)
+        f /= np.linalg.norm(f)
+        s = np.cross(f, up_vector)
+        s /= np.linalg.norm(s)
+        u = np.cross(s, f)
+        rot_mat = np.vstack([s, -u, f]).T
+        t =np.asarray(eye_pos)
+        return SE3(SO3.from_matrix(rot_mat), t)
+    
+    def render(self, cam_pose:SE3):
+        cam_pose_opengl = cam_pose @ SE3(SO3.from_euler("xyz", [np.pi,0,0]))
+        view_matrix = list(cam_pose_opengl.inverse().as_matrix().flatten("F"))
+        proj_matrix = list(self.intrinsic.get_projection_matrix_opengl())
+        
+        #result: (width, height, rgb, depth, seg)
+        result = self.world.getCameraImage(
+            width=self.intrinsic.width,
+            height=self.intrinsic.height,
+            viewMatrix=view_matrix,
+            projectionMatrix=proj_matrix,
+            renderer=p.ER_TINY_RENDERER)
+        w, h = self.intrinsic.width, self.intrinsic.height
+        far, near = self.intrinsic.far, self.intrinsic.near
+        rgb = np.reshape(result[2], (h, w, 4))[:,:,:3] * 1. / 255.
+        depth = np.asarray(result[3]).reshape(h,-1)
+        seg = np.asarray(result[4])
+        depth = far * near / (far - (far - near) * depth)
+        return rgb, depth, seg
