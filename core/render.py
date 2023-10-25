@@ -2,8 +2,8 @@
 import numpy as np
 import pybullet as p
 from dataclasses import dataclass
-from easybullet.base import *
-from easybullet.pose import SE3, SO3
+from .base import *
+from .pose import SE3, SO3
 
 @dataclass
 class CameraIntrinsic:

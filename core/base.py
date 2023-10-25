@@ -1,7 +1,7 @@
 import pybullet as p
 import numpy as np
 from pybullet_utils.bullet_client import BulletClient
-from easybullet.pose import SE3, SO3
+from .pose import SE3, SO3
 from dataclasses import dataclass, field
 import trimesh
 from typing import *
