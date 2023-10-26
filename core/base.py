@@ -30,7 +30,10 @@ class Shape(abc.ABC):
         )
     
     def get_col_query(self):
-        return dict()
+        return dict(
+            collisionFramePosition=self.viz_offset_xyzwxyz[-3:],
+            collisionFrameOrientation=self.viz_offset_xyzwxyz[:4],
+        )
 
 @dataclass(frozen=True)
 class CylinderShape(Shape):
@@ -47,7 +50,13 @@ class CylinderShape(Shape):
         return query
     
     def get_col_query(self):
-        pass
+        query = super().get_col_query()
+        query.update(
+            shapeType=p.GEOM_CYLINDER,
+            radius=self.radius,
+            height=self.length,
+        )
+        return query
 
 @dataclass(frozen=True)
 class MeshShape(Shape):
@@ -83,14 +92,14 @@ class BulletWorld(BulletClient):
     
     def register_body(self, body:Body):
         self.body_dict[body.name] = body
-        print(f"multibody registered: {body.name}[{body.uid}]")
+        #print(f"multibody registered: {body.name}[{body.uid}]")
 
     def remove_body(self, body:Union[Body, Bodies]):
         if isinstance(body, Body):
             if body.name in self.body_dict:    
                 self.removeBody(body.uid)
                 del self.body_dict[body.name]
-                print(f"multibody removed: {body.name}[{body.uid}]")
+                #print(f"multibody removed: {body.name}[{body.uid}]")
         elif isinstance(body, Bodies):
             for body_ in body.bodies:
                 self.remove_body(body_)
@@ -135,6 +144,7 @@ class Body(abc.ABC):
     col_id: int = field(init=False)
 
     def __post_init__(self):
+        assert self.name not in self.client.body_dict, "Body name already exists!"
         self.viz_id, self.col_id = self.client.get_shape_id(self.shape)
         self.uid = self.client.createMultiBody(
             baseVisualShapeIndex=self.viz_id,
@@ -176,8 +186,8 @@ class Mesh(Body):
             viz_mesh_path=viz_mesh_path,
             col_mesh_path=col_mesh_path,
             scale=scale,
-            viz_offset_xyzwxyz=tuple(viz_offset.as_xyzwxyz()),
-            col_offset_xyzwxyz=tuple(col_offset.as_xyzwxyz()),
+            viz_offset_xyzwxyz=tuple(viz_offset.as_xyz_xyzw()),
+            col_offset_xyzwxyz=tuple(col_offset.as_xyz_xyzw()),
             rgba=rgba,
             ghost=ghost,
         )
@@ -190,12 +200,13 @@ class Cylinder(Body):
     @classmethod
     def get_shape(cls, radius, length, rgba=(1,1,1,1), ghost=False, offset: SE3 = None):
         offset = SE3.identity() if offset is None else offset
-        offset = tuple(offset.as_xyzwxyz())
+        offset = tuple(offset.as_xyz_xyzw())
         return CylinderShape(rgba, ghost, offset, offset, radius, length)
 
 
 @dataclass
 class Bodies:
+    """Body container"""
     bodies: List[Body]
     relative_poses: List[Body]
     pose: SE3 = field(default_factory=lambda : SE3.identity())
@@ -216,6 +227,26 @@ class Bodies:
         poses = [self.pose@pose for pose in self.relative_poses]
         for pose, body in zip(poses, self.bodies):
             body.set_pose(pose)
+
+@dataclass
+class Frame(Bodies):
+    @classmethod
+    def from_pose(cls, world, name, pose=SE3.identity(), radius=0.004, length=0.04):
+        viz_offsets = [
+            SE3.from_xyz_xyzw([length/2,0,0],[0, 0.7071, 0, 0.7071]),
+            SE3.from_xyz_xyzw([0,length/2,0],[-0.7071, 0, 0, 0.7071]),
+            SE3.from_xyz_xyzw([0,0,length/2],[0, 0, 0,1]),
+        ]
+        cyl_shapes = [
+            Cylinder.get_shape(
+                radius, length, ghost=True, 
+                rgba=tuple([*rgb,1.]),
+                offset=offset)
+            for rgb, offset in zip(np.eye(3), viz_offsets)
+        ]
+        axes = [Cylinder(f"{name}_{i}", axis_shape, 0., world)
+                for i, axis_shape in enumerate(cyl_shapes)]
+        return cls.from_bodies(axes[0], axes[1:])
 
 
 #TODO: Frame

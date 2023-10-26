@@ -5,6 +5,8 @@ import numpy as np
 from typing import *
 from typing_extensions import override
 
+Array = np.ndarray
+ArrayLike = Union[np.ndarray, tuple, list]
 
 class SO3(Rotation):
     def __init__(self, xyzw):
@@ -98,6 +100,9 @@ class SE3:
         trans = mat[:3, -1]
         return cls(rot, trans)
     @classmethod
+    def from_xyz_xyzw(cls, xyz, xyzw):
+        return cls(rot=SO3(xyzw), trans=np.asarray(xyz))
+    @classmethod
     def random(cls, lower=-np.ones(3), upper=np.ones(3)):
         rot = SO3.random()
         trans = np.random.uniform(lower, upper)
@@ -107,7 +112,7 @@ class SE3:
         return np.vstack(
             (np.c_[self.rot.as_matrix(), self.trans], [0.0, 0.0, 0.0, 1.0])
         )
-    def as_xyzwxyz(self):
+    def as_xyz_xyzw(self):
         return np.hstack([self.rot.xyzw, self.trans])
     
     def multiply(self, other:SE3):

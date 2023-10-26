@@ -43,7 +43,7 @@ class CameraIntrinsic:
 
 
 class Camera:
-    def __init__(self, world:BulletWorld, intrinsic:CameraIntrinsic):
+    def __init__(self, intrinsic:CameraIntrinsic, world:BulletWorld):
         self.world = world
         self.intrinsic = intrinsic
     
