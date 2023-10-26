@@ -43,7 +43,7 @@ class CameraIntrinsic:
 
 
 class Camera:
-    def __init__(self, world:BulletWorld, intrinsic:CameraIntrinsic):
+    def __init__(self, intrinsic:CameraIntrinsic, world:BulletWorld):
         self.world = world
         self.intrinsic = intrinsic
     
@@ -59,6 +59,7 @@ class Camera:
         return SE3(SO3.from_matrix(rot_mat), t)
     
     def render(self, cam_pose:SE3):
+        """output: rgb, depth, seg"""
         cam_pose_opengl = cam_pose @ SE3(SO3.from_euler("xyz", [np.pi,0,0]))
         view_matrix = list(cam_pose_opengl.inverse().as_matrix().flatten("F"))
         proj_matrix = list(self.intrinsic.get_projection_matrix_opengl())
