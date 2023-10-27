@@ -19,21 +19,29 @@ ArrayLike = Union[np.ndarray,List,Tuple]
 class Shape(abc.ABC):
     rgba: tuple
     ghost: bool
-    viz_offset_xyzwxyz: Tuple[float]
-    col_offset_xyzwxyz: Tuple[float]
+    viz_offset_xyz_xyzw: Tuple[float]
+    col_offset_xyz_xyzw: Tuple[float]
 
     def get_viz_query(self) -> dict:
         return dict(
-            visualFramePosition=self.viz_offset_xyzwxyz[-3:],
-            visualFrameOrientation=self.viz_offset_xyzwxyz[:4],
+            visualFramePosition=self.viz_offset.trans,
+            visualFrameOrientation=self.viz_offset.rot.xyzw,
             rgbaColor=self.rgba
         )
     
     def get_col_query(self):
         return dict(
-            collisionFramePosition=self.viz_offset_xyzwxyz[-3:],
-            collisionFrameOrientation=self.viz_offset_xyzwxyz[:4],
+            collisionFramePosition=self.col_offset.trans,
+            collisionFrameOrientation=self.col_offset.rot.xyzw,
         )
+    
+    @property
+    def viz_offset(self):
+        return SE3.from_xyz_xyzw(self.viz_offset_xyz_xyzw)
+    @property
+    def col_offset(self):
+        return SE3.from_xyz_xyzw(self.col_offset_xyz_xyzw)
+
 
 @dataclass(frozen=True)
 class CylinderShape(Shape):
@@ -63,23 +71,37 @@ class MeshShape(Shape):
     viz_mesh_path: str
     col_mesh_path: str
     scale: float
+    centering: bool
 
     def get_viz_query(self):
-        return dict(
+        query = super().get_viz_query()
+        query.update(
             shapeType=p.GEOM_MESH,
             fileName=self.viz_mesh_path,
             meshScale=np.ones(3)*self.scale,
-            rgbaColor=self.rgba,
-            visualFramePosition=self.viz_offset_xyzwxyz[-3:],
-            visualFrameOrientation=self.viz_offset_xyzwxyz[:4])
+        )
+        return query
+        # return dict(
+        #     rgbaColor=self.rgba,
+        #     # visualFramePosition=self.viz_offset_xyz_xyzw[-3:],
+        #     # visualFrameOrientation=self.viz_offset_xyz_xyzw[:4]
+        # )
     
     def get_col_query(self):
-        return dict(
+        query = super().get_viz_query()
+        query.update(
             shapeType=p.GEOM_MESH,
             fileName=self.col_mesh_path,
             meshScale=np.ones(3)*self.scale,
-            collisionFramePosition=self.col_offset_xyzwxyz[-3:],
-            collisionFrameOrientation=self.col_offset_xyzwxyz[:4])
+        )
+        return query
+        # return dict(
+        #     shapeType=p.GEOM_MESH,
+        #     fileName=self.col_mesh_path,
+        #     meshScale=np.ones(3)*self.scale,
+        #     # collisionFramePosition=self.col_offset_xyz_xyzw[-3:],
+        #     # collisionFrameOrientation=self.col_offset_xyz_xyzw[:4]
+        # )
 
 class BulletWorld(BulletClient):
     def __init__(self, gui=True):
@@ -167,12 +189,22 @@ class Body(abc.ABC):
 @dataclass
 class Mesh(Body):
     shape: MeshShape
+    viz_mesh: trimesh.Trimesh = field(init=False)
 
+    def __post_init__(self):
+        super().__post_init__()
+        self.viz_mesh = trimesh.load(self.shape.viz_mesh_path)
+        if self.shape.centering:
+            self.viz_mesh.apply_translation(
+                self.shape.viz_offset_xyz_xyzw[:3]
+            )
+        
     @classmethod
     def get_shape(
-            cls, viz_mesh_path:str, col_mesh_path=None, 
-            rgba=None, scale=1., centering=False,
-            viz_offset=None, col_offset=None):
+        cls, viz_mesh_path:str, col_mesh_path=None, 
+        rgba=None, scale=1., centering=False,
+        viz_offset=None, col_offset=None
+    ):
         ghost = True if col_mesh_path is None else False
         if centering:
             mesh = trimesh.load(viz_mesh_path)
@@ -186,8 +218,9 @@ class Mesh(Body):
             viz_mesh_path=viz_mesh_path,
             col_mesh_path=col_mesh_path,
             scale=scale,
-            viz_offset_xyzwxyz=tuple(viz_offset.as_xyz_xyzw()),
-            col_offset_xyzwxyz=tuple(col_offset.as_xyz_xyzw()),
+            centering=centering,
+            viz_offset_xyz_xyzw=tuple(viz_offset.as_xyz_xyzw()),
+            col_offset_xyz_xyzw=tuple(col_offset.as_xyz_xyzw()),
             rgba=rgba,
             ghost=ghost,
         )
@@ -233,9 +266,9 @@ class Frame(Bodies):
     @classmethod
     def from_pose(cls, world, name, pose=SE3.identity(), radius=0.004, length=0.04):
         viz_offsets = [
-            SE3.from_xyz_xyzw([length/2,0,0],[0, 0.7071, 0, 0.7071]),
-            SE3.from_xyz_xyzw([0,length/2,0],[-0.7071, 0, 0, 0.7071]),
-            SE3.from_xyz_xyzw([0,0,length/2],[0, 0, 0,1]),
+            SE3.from_xyz_xyzw([length/2,0,0, 0, 0.7071, 0, 0.7071]),
+            SE3.from_xyz_xyzw([0,length/2,0,-0.7071, 0, 0, 0.7071]),
+            SE3.from_xyz_xyzw([0,0,length/2,0, 0, 0,1]),
         ]
         cyl_shapes = [
             Cylinder.get_shape(
@@ -247,46 +280,4 @@ class Frame(Bodies):
         axes = [Cylinder(f"{name}_{i}", axis_shape, 0., world)
                 for i, axis_shape in enumerate(cyl_shapes)]
         return cls.from_bodies(axes[0], axes[1:])
-
-
-#TODO: Frame
-# @dataclass(frozen=True)
-# class FrameShape:
-#     radius: float
-#     length: float
-
-#     def get_viz_query(self, color):
-#         return dict(
-#             shapeType=p.GEOM_CYLINDER,
-#             radius=self.radius,
-#             length=self.length,
-#             visualFramePosition=[0,0,self.length/2],
-#             rgbaColor=[*color, 1])
-
-# class Frame(Body):
-#     axis_orns: ClassVar[np.ndarray] = np.array([
-#         [0, 0.7071, 0, 0.7071],
-#         [-0.7071, 0, 0, 0.7071],
-#         [0,0,0,1]])
-    
-#     def __init__(self, world:BulletWorld, length=0.05, radius=0.005):
-#         self.shape = FrameShape(radius, length) # TODO: change with 3 cylinder shapes?
-#         viz_ids, col_ids = world.get_shape_id(self.shape)
-#         uids = []
-#         for viz_id, col_id in zip(viz_ids, col_ids):
-#             uids.append(Body.create(world, viz_id, col_id))
-#         super().__init__(world, uids)
-#         self.pose = SE3.identity()
-#         self.set_pose(self.pose)
-    
-#     def __del__(self):
-#         for uid in self.uid:
-#             self.client.removeBody(uid)
-    
-#     def set_pose(self, pose:SE3):
-#         self.pose = pose
-#         for uid, axis_orn in zip(self.uid, self.axis_orns):
-#             orn = pose.rot @ SO3(axis_orn)
-#             self.client.resetBasePositionAndOrientation(
-#                 bodyUniqueId=uid, posObj=pose.trans, ornObj=orn.as_quat())    
 

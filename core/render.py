@@ -51,6 +51,8 @@ class CameraIntrinsic:
         points_cam = np.einsum("ij,i->ij", obj_pixels_norm, depth.flatten())
         is_valid = (self.near + eps <= depth) & (depth <= self.far - eps)
         return points_cam[is_valid.flatten()]
+    
+    
 
 
 class Camera:

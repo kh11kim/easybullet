@@ -100,7 +100,8 @@ class SE3:
         trans = mat[:3, -1]
         return cls(rot, trans)
     @classmethod
-    def from_xyz_xyzw(cls, xyz, xyzw):
+    def from_xyz_xyzw(cls, xyz_xyzw):
+        xyz, xyzw = xyz_xyzw[:3], xyz_xyzw[-4:]
         return cls(rot=SO3(xyzw), trans=np.asarray(xyz))
     @classmethod
     def random(cls, lower=-np.ones(3), upper=np.ones(3)):
@@ -113,7 +114,7 @@ class SE3:
             (np.c_[self.rot.as_matrix(), self.trans], [0.0, 0.0, 0.0, 1.0])
         )
     def as_xyz_xyzw(self):
-        return np.hstack([self.rot.xyzw, self.trans])
+        return np.hstack([self.trans, self.rot.xyzw])
     
     def multiply(self, other:SE3):
         rotation = self.rot @ other.rot
