@@ -40,6 +40,17 @@ class CameraIntrinsic:
             [0, 0, (near+far)/(near-far), 2*near*far/(near-far)],
             [0, 0, -1, 0]
         ]).flatten(order="F")
+    
+    def depth_to_points(self, depth, eps=0.01):
+        height, width = depth.shape
+        X, Y = np.meshgrid(np.arange(width), np.arange(height), indexing="xy")
+        pixels = np.stack([X, Y]).reshape(2, -1)
+        pixels_homo_coord = np.vstack([pixels, np.ones(pixels.shape[1])])
+        P_inv = np.linalg.inv(self.get_projection_matrix())
+        obj_pixels_norm = (P_inv @ pixels_homo_coord).T
+        points_cam = np.einsum("ij,i->ij", obj_pixels_norm, depth.flatten())
+        is_valid = (self.near + eps <= depth) & (depth <= self.far - eps)
+        return points_cam[is_valid.flatten()]
 
 
 class Camera:
