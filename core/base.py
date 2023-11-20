@@ -9,7 +9,7 @@ import trimesh
 from typing import *
 import abc
 import time
-from .shape import *
+from .struct import *
 
 
 class BulletWorld(BulletClient):
@@ -46,7 +46,7 @@ class BulletWorld(BulletClient):
             return self.shapes[shape]
         
         viz_id = self.createVisualShape(**shape.get_viz_query())
-        col_id = -1 if not shape.ghost \
+        col_id = -1 if shape.ghost \
             else self.createCollisionShape(**shape.get_col_query())
         
         self.shapes[shape] = (viz_id, col_id)
@@ -62,7 +62,31 @@ class BulletWorld(BulletClient):
             time.sleep(dt)
             quit = p.readUserDebugParameter(self.pause_button_uid)
             if quit >= num_quit+1: break
-        
+    
+    def get_distance_info(
+        self, 
+        body1:Body, 
+        body2: Body, 
+        link1:int=None, 
+        link2:int=None,
+        tol:float=0.,
+    ):
+        if (link1 is not None) & (link2 is not None):
+            results = self.getClosestPoints(
+                bodyA=body1.uid, bodyB=body2.uid, 
+                linkIndexA=link1, linkIndexB=link2,
+                distance=tol)
+        elif (link1 is None) & (link2 is None):
+            results = self.getClosestPoints(
+                bodyA=body1.uid, bodyB=body2.uid, 
+                distance=tol)
+        return [DistanceInfo(*info) for info in results]
+    
+    def is_body_collision(self, body1:Body, body2:Body):
+        distance_info = self.get_distance_info(body1, body2)
+        return any(distance_info)
+
+
 @define
 class Body(abc.ABC):
     name: str
@@ -84,12 +108,13 @@ class Body(abc.ABC):
 @define
 class Geometry(Body):
     shape: Shape
-    mass: float
+    mass: float = 0.1
     viz_id: int = field(init=False)
     col_id: int = field(init=False)
     
     def __attrs_post_init__(self):
-        self.viz_id, self.col_id = self.client.get_shape_id(self.shape)
+        # check if the shape is already existing
+        self.viz_id, self.col_id = self.client.get_shape_id(self.shape) 
         self.uid = self.client.createMultiBody(
             baseVisualShapeIndex=self.viz_id,
             baseCollisionShapeIndex=self.col_id,
@@ -141,13 +166,22 @@ class Mesh(Geometry):
 
 @define
 class Cylinder(Geometry):
-    shape: CylinderShape
 
     @classmethod
     def get_shape(cls, radius, length, rgba=(1,1,1,1), ghost=False, offset: SE3 = None):
         offset = SE3.identity() if offset is None else offset
         offset = tuple(offset.as_xyz_xyzw())
         return CylinderShape(rgba, ghost, offset, offset, radius, length)
+
+@define
+class Box(Geometry):
+
+    @classmethod
+    def get_shape(cls, half_extents, rgba=(1,1,1,1), ghost=False, offset: SE3 = None):
+        offset = SE3.identity() if offset is None else offset
+        offset = tuple(offset.as_xyz_xyzw())
+        return BoxShape(rgba, ghost, offset, offset, tuple(half_extents))
+
 
 @define
 class URDF(Body):
