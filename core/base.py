@@ -4,104 +4,13 @@ import pybullet as p
 import numpy as np
 from pybullet_utils.bullet_client import BulletClient
 from .pose import SE3, SO3
-from dataclasses import dataclass, field
+from attrs import define, field
 import trimesh
 from typing import *
 import abc
 import time
+from .shape import *
 
-
-Array = np.ndarray
-ArrayLike = Union[np.ndarray,List,Tuple]
-
-
-@dataclass(frozen=True)
-class Shape(abc.ABC):
-    rgba: tuple
-    ghost: bool
-    viz_offset_xyz_xyzw: Tuple[float]
-    col_offset_xyz_xyzw: Tuple[float]
-
-    def get_viz_query(self) -> dict:
-        return dict(
-            visualFramePosition=self.viz_offset.trans,
-            visualFrameOrientation=self.viz_offset.rot.xyzw,
-            rgbaColor=self.rgba
-        )
-    
-    def get_col_query(self):
-        return dict(
-            collisionFramePosition=self.col_offset.trans,
-            collisionFrameOrientation=self.col_offset.rot.xyzw,
-        )
-    
-    @property
-    def viz_offset(self):
-        return SE3.from_xyz_xyzw(self.viz_offset_xyz_xyzw)
-    @property
-    def col_offset(self):
-        return SE3.from_xyz_xyzw(self.col_offset_xyz_xyzw)
-
-
-@dataclass(frozen=True)
-class CylinderShape(Shape):
-    radius: float
-    length: float
-
-    def get_viz_query(self):
-        query = super().get_viz_query()
-        query.update(
-            shapeType=p.GEOM_CYLINDER,
-            radius=self.radius,
-            length=self.length,
-        )
-        return query
-    
-    def get_col_query(self):
-        query = super().get_col_query()
-        query.update(
-            shapeType=p.GEOM_CYLINDER,
-            radius=self.radius,
-            height=self.length,
-        )
-        return query
-
-@dataclass(frozen=True)
-class MeshShape(Shape):
-    viz_mesh_path: str
-    col_mesh_path: str
-    scale: float
-    centering: bool
-
-    def get_viz_query(self):
-        query = super().get_viz_query()
-        query.update(
-            shapeType=p.GEOM_MESH,
-            fileName=self.viz_mesh_path,
-            meshScale=np.ones(3)*self.scale,
-        )
-        return query
-        # return dict(
-        #     rgbaColor=self.rgba,
-        #     # visualFramePosition=self.viz_offset_xyz_xyzw[-3:],
-        #     # visualFrameOrientation=self.viz_offset_xyz_xyzw[:4]
-        # )
-    
-    def get_col_query(self):
-        query = super().get_viz_query()
-        query.update(
-            shapeType=p.GEOM_MESH,
-            fileName=self.col_mesh_path,
-            meshScale=np.ones(3)*self.scale,
-        )
-        return query
-        # return dict(
-        #     shapeType=p.GEOM_MESH,
-        #     fileName=self.col_mesh_path,
-        #     meshScale=np.ones(3)*self.scale,
-        #     # collisionFramePosition=self.col_offset_xyz_xyzw[-3:],
-        #     # collisionFrameOrientation=self.col_offset_xyz_xyzw[:4]
-        # )
 
 class BulletWorld(BulletClient):
     def __init__(self, gui=True):
@@ -154,24 +63,14 @@ class BulletWorld(BulletClient):
             quit = p.readUserDebugParameter(self.pause_button_uid)
             if quit >= num_quit+1: break
         
-
-@dataclass
+@define
 class Body(abc.ABC):
     name: str
-    shape: Shape
-    mass: float
     client: BulletWorld
     uid: int = field(init=False)
-    viz_id: int = field(init=False)
-    col_id: int = field(init=False)
 
-    def __post_init__(self):
+    def __attrs_post_init__(self):
         assert self.name not in self.client.body_dict, "Body name already exists!"
-        self.viz_id, self.col_id = self.client.get_shape_id(self.shape)
-        self.uid = self.client.createMultiBody(
-            baseVisualShapeIndex=self.viz_id,
-            baseCollisionShapeIndex=self.col_id,
-            baseMass=self.mass)
         self.client.register_body(self)
 
     def set_pose(self, pose: SE3):
@@ -182,22 +81,35 @@ class Body(abc.ABC):
         pos, orn = self.client.getBasePositionAndOrientation(self.uid)
         return SE3(SO3(orn), pos)
 
+@define
+class Geometry(Body):
+    shape: Shape
+    mass: float
+    viz_id: int = field(init=False)
+    col_id: int = field(init=False)
+    
+    def __attrs_post_init__(self):
+        self.viz_id, self.col_id = self.client.get_shape_id(self.shape)
+        self.uid = self.client.createMultiBody(
+            baseVisualShapeIndex=self.viz_id,
+            baseCollisionShapeIndex=self.col_id,
+            baseMass=self.mass)
+        super().__attrs_post_init__()
+    
     @abc.abstractclassmethod
     def get_shape(cls):
         pass
-
-@dataclass
-class Mesh(Body):
-    shape: MeshShape
+        
+@define
+class Mesh(Geometry):
     viz_mesh: trimesh.Trimesh = field(init=False)
 
-    def __post_init__(self):
-        super().__post_init__()
+    def __attrs_post_init__(self):
         self.viz_mesh = trimesh.load(self.shape.viz_mesh_path)
         if self.shape.centering:
             self.viz_mesh.apply_translation(
-                self.shape.viz_offset_xyz_xyzw[:3]
-            )
+                self.shape.viz_offset_xyz_xyzw[:3])
+        super().__attrs_post_init__()
         
     @classmethod
     def get_shape(
@@ -208,8 +120,9 @@ class Mesh(Body):
         ghost = True if col_mesh_path is None else False
         if centering:
             mesh = trimesh.load(viz_mesh_path)
-            viz_offset = SE3(trans=-mesh.centroid)
-            col_offset = SE3(trans=-mesh.centroid)
+            offset = mesh.bounding_box.primitive.center
+            viz_offset = SE3(trans=-offset)
+            col_offset = SE3(trans=-offset)
         viz_offset = viz_offset if viz_offset is not None else SE3.identity()
         col_offset = col_offset if col_offset is not None else SE3.identity()
         rgba = None if rgba is None else tuple(rgba)
@@ -226,8 +139,8 @@ class Mesh(Body):
         )
         return shape
 
-@dataclass
-class Cylinder(Body):
+@define
+class Cylinder(Geometry):
     shape: CylinderShape
 
     @classmethod
@@ -236,13 +149,28 @@ class Cylinder(Body):
         offset = tuple(offset.as_xyz_xyzw())
         return CylinderShape(rgba, ghost, offset, offset, radius, length)
 
+@define
+class URDF(Body):
+    path: str
+    pose: SE3 = field(factory=lambda : SE3.identity())
 
-@dataclass
+    def __attrs_post_init__(self):
+        self.uid = self.client.loadURDF(
+            fileName=str(self.path),
+            basePosition=self.pose.trans,
+            baseOrientation=self.pose.rot.as_quat(),
+            useFixedBase=True,
+            # globalScaling=scale,
+        )
+        super().__attrs_post_init__()
+        
+
+@define
 class Bodies:
     """Body container"""
     bodies: List[Body]
     relative_poses: List[Body]
-    pose: SE3 = field(default_factory=lambda : SE3.identity())
+    pose: SE3 = field(factory=lambda : SE3.identity())
 
     @classmethod
     def from_bodies(cls, base_body:Body, other_bodies:List[Body]):
@@ -261,7 +189,9 @@ class Bodies:
         for pose, body in zip(poses, self.bodies):
             body.set_pose(pose)
 
-@dataclass
+
+
+@define
 class Frame(Bodies):
     @classmethod
     def from_pose(cls, world, name, pose=SE3.identity(), radius=0.004, length=0.04):

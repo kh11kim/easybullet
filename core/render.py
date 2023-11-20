@@ -61,7 +61,7 @@ class Camera:
         self.intrinsic = intrinsic
     
     @classmethod
-    def get_look_at_pose(cls, eye_pos:ArrayLike, target_pos=np.zeros(3), up_vector=np.array([0.,0,1])):
+    def get_look_at_pose(cls, eye_pos:Sequence, target_pos=np.zeros(3), up_vector=np.array([0.,0,1])):
         f = np.asarray(target_pos) - np.asarray(eye_pos)
         f /= np.linalg.norm(f)
         s = np.cross(f, up_vector)
