@@ -20,10 +20,10 @@ output_directory = "./ycb"
 #objects_to_download = "all"
 objects_to_download = [
     "002_master_chef_can",
-    # "003_cracker_box",
+    "003_cracker_box",
     # "004_sugar_box",
     # "005_tomato_soup_can",
-    # "006_mustard_bottle",
+    "006_mustard_bottle",
     # "008_pudding_box",
     # "010_potted_meat_can",
     # "021_bleach_cleanser",
