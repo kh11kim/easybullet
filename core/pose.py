@@ -37,9 +37,11 @@ class SO3(Rotation):
     @classmethod
     def identity(cls): return cls([0,0,0,1])
     @classmethod
-    def from_quat(cls, xyzw):
-        """use default constructor for this"""
-        raise NotImplementedError
+    def from_quat(cls, xyzw): return SO3(xyzw)
+    @classmethod
+    def from_rotvec(cls, rotvec): 
+        return cls.from_Rotation(Rotation.from_rotvec(rotvec))
+        
     @classmethod
     def from_Rotation(cls, rot:Rotation): return cls(rot.as_quat())
     @classmethod

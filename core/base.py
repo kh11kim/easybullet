@@ -82,10 +82,20 @@ class BulletWorld(BulletClient):
                 distance=tol)
         return [DistanceInfo(*info) for info in results]
     
+    def get_contact_info(
+        self, body:Body, excludes:List[Body], tol:float):
+        """more expensive than distance_info due to contact force calc."""
+        self.step(no_dynamics=True)
+        results = self.getContactPoints(body.uid)
+        results = [ContactInfo(*c) for c in results]
+
     def is_body_collision(self, body1:Body, body2:Body):
         distance_info = self.get_distance_info(body1, body2)
         return any(distance_info)
 
+    def is_link_collision(self, body1:Body, body2:Body, link_idx1, link_idx2):
+        distance_info = self.get_distance_info(body1, body2, link_idx1, link_idx2)
+        return any(distance_info)
 
 @define
 class Body(abc.ABC):
@@ -104,100 +114,19 @@ class Body(abc.ABC):
     def get_pose(self):
         pos, orn = self.client.getBasePositionAndOrientation(self.uid)
         return SE3(SO3(orn), pos)
-
-@define
-class Geometry(Body):
-    shape: Shape
-    mass: float = 0.1
-    viz_id: int = field(init=False)
-    col_id: int = field(init=False)
     
-    def __attrs_post_init__(self):
-        # check if the shape is already existing
-        self.viz_id, self.col_id = self.client.get_shape_id(self.shape) 
-        self.uid = self.client.createMultiBody(
-            baseVisualShapeIndex=self.viz_id,
-            baseCollisionShapeIndex=self.col_id,
-            baseMass=self.mass)
-        super().__attrs_post_init__()
+    def is_collision_with(self, other_body:Body):
+        return self.client.is_body_collision(self, other_body)
+
+    def get_dynamics_info(self, link_idx=-1):
+        return DynamicsInfo(*self.client.getDynamicsInfo(self.uid, link_idx))
     
-    @abc.abstractclassmethod
-    def get_shape(cls):
-        pass
-        
-@define
-class Mesh(Geometry):
-    viz_mesh: trimesh.Trimesh = field(init=False)
-
-    def __attrs_post_init__(self):
-        self.viz_mesh = trimesh.load(self.shape.viz_mesh_path)
-        if self.shape.centering:
-            self.viz_mesh.apply_translation(
-                self.shape.viz_offset_xyz_xyzw[:3])
-        super().__attrs_post_init__()
-        
-    @classmethod
-    def get_shape(
-        cls, viz_mesh_path:str, col_mesh_path=None, 
-        rgba=None, scale=1., centering=False,
-        viz_offset=None, col_offset=None
-    ):
-        ghost = True if col_mesh_path is None else False
-        if centering:
-            mesh = trimesh.load(viz_mesh_path)
-            offset = mesh.bounding_box.primitive.center
-            viz_offset = SE3(trans=-offset)
-            col_offset = SE3(trans=-offset)
-        viz_offset = viz_offset if viz_offset is not None else SE3.identity()
-        col_offset = col_offset if col_offset is not None else SE3.identity()
-        rgba = None if rgba is None else tuple(rgba)
-        
-        shape = MeshShape(
-            viz_mesh_path=viz_mesh_path,
-            col_mesh_path=col_mesh_path,
-            scale=scale,
-            centering=centering,
-            viz_offset_xyz_xyzw=tuple(viz_offset.as_xyz_xyzw()),
-            col_offset_xyz_xyzw=tuple(col_offset.as_xyz_xyzw()),
-            rgba=rgba,
-            ghost=ghost,
-        )
-        return shape
-
-@define
-class Cylinder(Geometry):
-
-    @classmethod
-    def get_shape(cls, radius, length, rgba=(1,1,1,1), ghost=False, offset: SE3 = None):
-        offset = SE3.identity() if offset is None else offset
-        offset = tuple(offset.as_xyz_xyzw())
-        return CylinderShape(rgba, ghost, offset, offset, radius, length)
-
-@define
-class Box(Geometry):
-
-    @classmethod
-    def get_shape(cls, half_extents, rgba=(1,1,1,1), ghost=False, offset: SE3 = None):
-        offset = SE3.identity() if offset is None else offset
-        offset = tuple(offset.as_xyz_xyzw())
-        return BoxShape(rgba, ghost, offset, offset, tuple(half_extents))
-
-
-@define
-class URDF(Body):
-    path: str
-    pose: SE3 = field(factory=lambda : SE3.identity())
-
-    def __attrs_post_init__(self):
-        self.uid = self.client.loadURDF(
-            fileName=str(self.path),
-            basePosition=self.pose.trans,
-            baseOrientation=self.pose.rot.as_quat(),
-            useFixedBase=True,
-            # globalScaling=scale,
-        )
-        super().__attrs_post_init__()
-        
+    def set_dynamics_info(self, input_dict, link_idx=-1):
+        """input_dict should contain key and value of the changeDynamics()"""
+        self.client.changeDynamics(
+            bodyUniqueId=self.uid,
+            linkIndex=link_idx,
+            **input_dict)
 
 @define
 class Bodies:
@@ -222,26 +151,4 @@ class Bodies:
         poses = [self.pose@pose for pose in self.relative_poses]
         for pose, body in zip(poses, self.bodies):
             body.set_pose(pose)
-
-
-
-@define
-class Frame(Bodies):
-    @classmethod
-    def from_pose(cls, world, name, pose=SE3.identity(), radius=0.004, length=0.04):
-        viz_offsets = [
-            SE3.from_xyz_xyzw([length/2,0,0, 0, 0.7071, 0, 0.7071]),
-            SE3.from_xyz_xyzw([0,length/2,0,-0.7071, 0, 0, 0.7071]),
-            SE3.from_xyz_xyzw([0,0,length/2,0, 0, 0,1]),
-        ]
-        cyl_shapes = [
-            Cylinder.get_shape(
-                radius, length, ghost=True, 
-                rgba=tuple([*rgb,1.]),
-                offset=offset)
-            for rgb, offset in zip(np.eye(3), viz_offsets)
-        ]
-        axes = [Cylinder(f"{name}_{i}", axis_shape, 0., world)
-                for i, axis_shape in enumerate(cyl_shapes)]
-        return cls.from_bodies(axes[0], axes[1:])
 
