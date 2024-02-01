@@ -3,7 +3,6 @@ from scipy.spatial.transform import Rotation
 from dataclasses import dataclass
 import numpy as np
 from typing import *
-from typing_extensions import override
 
 Array = np.ndarray
 ArrayLike = Union[np.ndarray, tuple, list]
@@ -12,7 +11,6 @@ class SO3(Rotation):
     def __init__(self, xyzw):
         super().__init__(quat=xyzw, normalize=True)
     
-    @override
     def __repr__(self) -> str:
         xyzw = np.round(self.xyzw, 5)
         return f"{self.__class__.__name__}(xyzw={xyzw})"
@@ -46,12 +44,12 @@ class SO3(Rotation):
     def from_Rotation(cls, rot:Rotation): return cls(rot.as_quat())
     @classmethod
     def from_wxyz(cls, wxyz): return cls(np.roll(wxyz, -1))
-    @override
+    #@override
     @classmethod
-    def from_euler(cls, seq: str, angles: Sequence[float]):
+    def from_euler(cls, seq: str, angles: Sequence[float], degrees=False):
         """{‘X’, ‘Y’, ‘Z’} for intrinsic rotations, or {‘x’, ‘y’, ‘z’} for extrinsic rotations"""
-        return cls.from_Rotation(Rotation.from_euler(seq, angles))
-    @override
+        return cls.from_Rotation(Rotation.from_euler(seq, angles, degrees=degrees))
+    #@override
     @classmethod
     def from_matrix(cls, mat:ArrayLike):
         return cls.from_Rotation(Rotation.from_matrix(mat))
@@ -61,7 +59,7 @@ class SO3(Rotation):
     
     def inverse(self):
         return SO3(self.xyzw * np.array([-1, -1, -1, 1]))
-    @override
+    #@override
     def apply(self, target: ArrayLike) -> ArrayLike:
         return super().apply(target)
     def multiply(self, other: SO3):
