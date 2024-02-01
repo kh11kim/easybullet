@@ -1,5 +1,5 @@
 import trimesh
-from .base import Body, Bodies
+from .base import BulletWorld, Body, Bodies
 from .struct import *
 from pathlib import Path
 
@@ -22,6 +22,12 @@ class Geometry(Body):
     @abc.abstractclassmethod
     def get_shape(cls):
         pass
+    
+    @classmethod
+    def create(cls, name:str, world:BulletWorld, shape:Shape, mass=0.1):
+        return cls(name, world, shape, mass)
+    
+    
         
 @define
 class Mesh(Geometry):
@@ -113,7 +119,7 @@ class URDF(Body):
 @define
 class Frame(Bodies):
     @classmethod
-    def from_pose(cls, world, name, pose=SE3.identity(), radius=0.004, length=0.04):
+    def from_pose(cls, name, world, pose=SE3.identity(), radius=0.004, length=0.04):
         viz_offsets = [
             SE3.from_xyz_xyzw([length/2,0,0, 0, 0.7071, 0, 0.7071]),
             SE3.from_xyz_xyzw([0,length/2,0,-0.7071, 0, 0, 0.7071]),
@@ -126,6 +132,6 @@ class Frame(Bodies):
                 offset=offset)
             for rgb, offset in zip(np.eye(3), viz_offsets)
         ]
-        axes = [Cylinder(f"{name}_{i}", axis_shape, 0., world)
+        axes = [Cylinder(f"{name}_{i}", world, axis_shape, 0.)
                 for i, axis_shape in enumerate(cyl_shapes)]
         return cls.from_bodies(axes[0], axes[1:])
