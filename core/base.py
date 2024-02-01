@@ -13,14 +13,27 @@ from .struct import *
 
 
 class BulletWorld(BulletClient):
-    def __init__(self, gui=True):
+    def __init__(self, gui=True, dt=0.001, dt_viz=0.05, gravity=-9.81, is_realtime=True):
         connection_mode = p.GUI if gui else p.DIRECT
         super().__init__(connection_mode=connection_mode)
         if gui:
             self.pause_button_uid = p.addUserDebugParameter("pause",1,0,1)
         self.shapes = {}
         self.body_dict: Dict[Body] = {}
+        self.dt = dt
+        self.dt_viz = dt_viz
+        self.gravity = gravity
+        self.is_realtime = is_realtime
+        self.init()
     
+    def init(self):
+        self._t = 0.
+        self.setTimeStep(self.dt)
+        self.set_gravity(self.gravity)
+    
+    def set_gravity(self, force_z=-9.81):
+        self.setGravity(0, 0, force_z)
+        
     def register_body(self, body:Body):
         self.body_dict[body.name] = body
         #print(f"multibody registered: {body.name}[{body.uid}]")
@@ -40,6 +53,10 @@ class BulletWorld(BulletClient):
             self.performCollisionDetection()
         else:
             self.stepSimulation()
+            
+        if self.is_realtime and int(self._t / self.dt) % (1/self.dt_viz) == 0:
+            time.sleep(self.dt_viz/2) # a little bit faster
+        self._t += self.dt
 
     def get_shape_id(self, shape:Shape):
         if shape in self.shapes:
@@ -53,13 +70,13 @@ class BulletWorld(BulletClient):
         return self.shapes[shape]
     
     def show(self):
-        """function for macos"""
+        """function only for macos"""
         num_quit = p.readUserDebugParameter(self.pause_button_uid)
         
-        dt = 0.01
+        polling_rate = 100
         while True:
             self.step(no_dynamics=True)
-            time.sleep(dt)
+            time.sleep(1/polling_rate)
             quit = p.readUserDebugParameter(self.pause_button_uid)
             if quit >= num_quit+1: break
     
@@ -102,7 +119,7 @@ class Body(abc.ABC):
     name: str
     client: BulletWorld
     uid: int = field(init=False)
-
+    
     def __attrs_post_init__(self):
         assert self.name not in self.client.body_dict, "Body name already exists!"
         self.client.register_body(self)
@@ -114,7 +131,7 @@ class Body(abc.ABC):
     def get_pose(self):
         pos, orn = self.client.getBasePositionAndOrientation(self.uid)
         return SE3(SO3(orn), pos)
-    
+
     def is_collision_with(self, other_body:Body):
         return self.client.is_body_collision(self, other_body)
 
@@ -127,6 +144,22 @@ class Body(abc.ABC):
             bodyUniqueId=self.uid,
             linkIndex=link_idx,
             **input_dict)
+    
+    def get_aabb(self):
+        if hasattr(self, "joint_info"):
+            link_num = len(self.joint_info) #TODO
+            lowers, uppers = [], []
+            for link in [-1, *range(link_num)]:
+                lower, upper = \
+                    self.client.getAABB(self.uid, linkIndex=link)
+                lowers.append(lower)
+                uppers.append(upper)
+            lower = np.min(lowers, axis=0)
+            upper = np.max(uppers, axis=0)
+        else:
+            lower, upper = self.client.getAABB(self.uid, linkIndex=-1)
+            lower, upper = np.array(lower), np.array(upper)
+        return lower, upper
 
 @define
 class Bodies:

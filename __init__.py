@@ -5,3 +5,4 @@ from .core.render import *
 from .core.urdfs import *
 from .core.struct import *
 from .core.utils import *
+from .assets import *
