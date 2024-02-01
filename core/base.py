@@ -13,7 +13,14 @@ from .struct import *
 
 
 class BulletWorld(BulletClient):
-    def __init__(self, gui=True, dt=0.001, dt_viz=0.05, gravity=-9.81, is_realtime=True):
+    def __init__(
+        self, 
+        gui=True, 
+        dt=0.001, 
+        dt_viz=0.05, 
+        gravity=-9.81, 
+        is_realtime=True,
+    ):
         connection_mode = p.GUI if gui else p.DIRECT
         super().__init__(connection_mode=connection_mode)
         if gui:
@@ -55,7 +62,7 @@ class BulletWorld(BulletClient):
             self.stepSimulation()
             
         if self.is_realtime and int(self._t / self.dt) % (1/self.dt_viz) == 0:
-            time.sleep(self.dt_viz/2) # a little bit faster
+            time.sleep(self.dt_viz/3) # a little bit faster
         self._t += self.dt
 
     def get_shape_id(self, shape:Shape):
