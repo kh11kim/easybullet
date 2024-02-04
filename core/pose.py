@@ -104,6 +104,10 @@ class SE3:
         xyz, xyzw = xyz_xyzw[:3], xyz_xyzw[-4:]
         return cls(rot=SO3(xyzw), trans=np.asarray(xyz))
     @classmethod
+    def from_xyz_wxyz(cls, xyz_wxyz):
+        xyz, rot = xyz_wxyz[:3], SO3.from_wxyz(xyz_wxyz[-4:])
+        return cls(rot=rot, trans=np.asarray(xyz))
+    @classmethod
     def random(cls, lower=-np.ones(3), upper=np.ones(3)):
         rot = SO3.random()
         trans = np.random.uniform(lower, upper)
@@ -115,6 +119,9 @@ class SE3:
         )
     def as_xyz_xyzw(self):
         return np.hstack([self.trans, self.rot.xyzw])
+    
+    def as_xyz_wxyz(self):
+        return np.hstack([self.trans, self.rot.wxyz])
     
     def multiply(self, other:SE3):
         rotation = self.rot @ other.rot

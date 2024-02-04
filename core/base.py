@@ -130,7 +130,7 @@ class Body(abc.ABC):
     def __attrs_post_init__(self):
         assert self.name not in self.client.body_dict, "Body name already exists!"
         self.client.register_body(self)
-
+        
     def set_pose(self, pose: SE3):
         self.client.resetBasePositionAndOrientation(
             self.uid, pose.trans, pose.rot.as_quat())
