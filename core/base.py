@@ -19,7 +19,7 @@ class BulletWorld(BulletClient):
         dt=0.001, 
         dt_viz=0.05, 
         gravity=-9.81, 
-        is_realtime=True,
+        add_delay_for_viz=True,
     ):
         connection_mode = p.GUI if gui else p.DIRECT
         super().__init__(connection_mode=connection_mode)
@@ -30,7 +30,7 @@ class BulletWorld(BulletClient):
         self.dt = dt
         self.dt_viz = dt_viz
         self.gravity = gravity
-        self.is_realtime = is_realtime
+        self.is_realtime = add_delay_for_viz
         self.init()
     
     def init(self):
@@ -62,7 +62,7 @@ class BulletWorld(BulletClient):
             self.stepSimulation()
             
         if self.is_realtime and int(self._t / self.dt) % (1/self.dt_viz) == 0:
-            time.sleep(self.dt_viz/3) # a little bit faster
+            time.sleep(self.dt_viz/3) # add delay for visualize
         self._t += self.dt
 
     def get_shape_id(self, shape:Shape):
