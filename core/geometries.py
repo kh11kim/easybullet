@@ -36,12 +36,17 @@ class Mesh(Geometry):
 
     def __attrs_post_init__(self):
         self.viz_mesh = trimesh.load(self.shape.viz_mesh_path)
-        self.col_mesh = trimesh.load(self.shape.col_mesh_path)
-        if self.shape.centering:
-            self.viz_mesh.apply_translation(
-                self.shape.viz_offset_xyz_xyzw[:3])
-            self.col_mesh.apply_translation(
-                self.shape.col_offset_xyz_xyzw[:3])
+        if self.shape.col_mesh_path:
+            self.col_mesh = trimesh.load(self.shape.col_mesh_path)
+            if self.shape.centering:
+                self.viz_mesh.apply_translation(
+                    self.shape.viz_offset_xyz_xyzw[:3])
+        else:
+            self.col_mesh = None
+            if self.shape.centering:
+                self.col_mesh.apply_translation(
+                    self.shape.col_offset_xyz_xyzw[:3])
+            
         super().__attrs_post_init__()
         
     @classmethod
@@ -53,7 +58,9 @@ class Mesh(Geometry):
         ghost = True if col_mesh_path is None else False
         if centering:
             mesh = trimesh.load(viz_mesh_path)
-            offset = mesh.bounding_box.primitive.center
+            if isinstance(mesh, trimesh.Scene):
+                mesh = mesh.dump(True)
+            offset = mesh.centroid #mesh.bounding_box.primitive.center
             viz_offset = SE3(trans=-offset)
             col_offset = SE3(trans=-offset)
         viz_offset = viz_offset if viz_offset is not None else SE3.identity()

@@ -36,6 +36,12 @@ class URDF(Body):
         self.max_torque = [250] * len(self.movable_joints)
         super().__attrs_post_init__()
     
+    @property
+    def neutral(self):
+        lb = np.array([joint.joint_lower_limit  for joint in self.joint_info if joint.movable])
+        ub = np.array([joint.joint_upper_limit  for joint in self.joint_info if joint.movable])
+        return (lb + ub)/2
+        
     def get_joint_states(self):
         return [JointState(*s) for s in self.client.getJointStates(self.uid, self.movable_joints)]
     
@@ -72,3 +78,14 @@ class URDF(Body):
             positionGains=self.pos_ctrl_gain_p,
             velocityGains=self.pos_ctrl_gain_d,
         )
+    
+    def get_jacobian(self, q, link_idx, local_position=[0,0,0]):
+        jac_trans, jac_rot = self.client.calculateJacobian(
+            bodyUniqueId=self.uid,
+            linkIndex=link_idx,
+            localPosition=local_position,
+            objPositions=q.tolist(),
+            objVelocities=np.zeros_like(q).tolist(),
+            objAccelerations=np.zeros_like(q).tolist()
+        )
+        return np.vstack([jac_trans, jac_rot])
